@@ -10,65 +10,118 @@ import Tween = Laya.Tween;
 
 // 程序入口
 class GameMain{
-	static resources = [
-        "res/atlas/comp.atlas", 
-    ];
 
-	private button1:Sprite;
-	private button2:Sprite;
+	//公共变量
+
+	//私有变量
+	private body:Laya.Animation;
+
+	public static enemy:view.enemy;
+	public static mainrole:view.role;
 
     constructor()
     {
-        Laya.init(800, 800, WebGL);
+        Laya.init(720, 1280, WebGL);
 
 		Laya.stage.alignV = Stage.ALIGN_MIDDLE;
 		Laya.stage.alignH = Stage.ALIGN_CENTER;
 
 		Laya.stage.scaleMode = "showall";
-		Laya.stage.bgColor = "#232628";
-		this.setup();
+		Laya.stage.bgColor = "#feeefe";
+		Laya.loader.load(Consts.resources,Laya.Handler.create(this,this.onLoaded));
     }
+	
+	onLoaded():void{
+		var background:view.background = new view.background();
+		Laya.stage.addChild(background);
 
-	private setup():void{
-		var vGap:number = 100;
+		this.createMyself();
+		//根据主角的位置创建敌人
+		this.createEnemy();
+	}
+
+	//根据类型创建敌人
+	createEnemy():void{
+		GameMain.enemy = new view.enemy();
+		//设置敌人出现的位置，计算相对位置
+		var relativeX:number = GameMain.mainrole.x;
+		var relativeY:number = GameMain.mainrole.y;
+		for(var i:number = 0;i<Consts.lines[this.seq+1].length;i++){
+			if(i%2 === 0){
+				relativeX += Consts.lines[this.seq+1][i];
+			}else{
+				relativeY -= Consts.lines[this.seq+1][i];
+			}
+		}
+
+		//根据主角的位置，设置敌人初始Y值
+		if(GameMain.mainrole.skewY % 360 === 0){
+			GameMain.enemy.pos(800,relativeY);
+		}else{
+			GameMain.enemy.pos(-100,relativeY);
+		}
+		//设置敌人缓动出现
 		
-		this.button1 = this.createButton("点我3秒以后");
-		this.button1.x = (Laya.stage.width - this.button1.width)/2;
-		this.button1.y = (Laya.stage.height - this.button1.height - vGap)/2;
-		Laya.stage.addChild(this.button1);
-		this.button1.on(Laya.Event.CLICK,this,this.onDecreaseAlpha1);
-
-		this.button2 = this.createButton("点我60帧以后");
-		this.button2.pos(this.button1.x,this.button1.y+vGap);
-		Laya.stage.addChild(this.button2);
-		this.button2.on(Laya.Event.CLICK,this,this.onDecreaseAlpha2);
+		Laya.Tween.to(GameMain.enemy,{x:relativeX,y:relativeY},500,Laya.Ease.linearIn,null,0);
 		
-	}
-    private createButton(label:string):Sprite{
-		var w:number =300,h:number = 60;
+		GameMain.enemy.skewY = GameMain.mainrole.skewY;
+		Laya.stage.addChild(GameMain.enemy);
 
-		var button:Sprite = new Sprite();
-		button.graphics.drawRect(0,0,w,h,"#ff7f50");
-		button.size(w,h);
-		button.graphics.fillText(label, w / 2, 17, "20px simHei", "#ffffff", "center")
-		return button;
+		//回收敌人，
+		this.shootEnemy();
+
+	}
+	createMyself():void{
+		GameMain.mainrole = new view.role();
+		//初始位置，状态
+		GameMain.mainrole.pos(600,1000);
+		GameMain.mainrole.skewY = 180;
+
+		Laya.stage.addChild(GameMain.mainrole);
+		GameMain.mainrole.gun.init();
+	}
+	/**
+	 * 根据位置移动角色，需要特定的条件触发
+	 */
+	moveRole():void{
+		var totalTime:number =0;
+		var totalX:number =0;
+		var totalY:number =0;
+		for(var i:number = 0;i<Consts.lines[this.seq].length;i++){
+			if(i%2 === 0){
+				totalX += Consts.lines[this.seq][i];
+				Laya.Tween.to(GameMain.mainrole,{x:GameMain.mainrole.x-totalX},Math.abs(Consts.lines[this.seq][i]*2),Laya.Ease.linearNone,null,totalTime);
+			}else{
+				totalY += Consts.lines[this.seq][i]
+				Laya.Tween.to(GameMain.mainrole,{y:GameMain.mainrole.y-totalY},Consts.lines[this.seq][i]*2,Laya.Ease.linearNone,null,totalTime);
+			}
+			totalTime += Math.abs(Consts.lines[this.seq][i]*2);
+		}
+		Laya.timer.once(totalTime,this,()=>{
+			GameMain.mainrole.skewY += 180;
+			//根据主角的位置创建敌人
+			this.createEnemy();
+			//初始化枪
+			
+			GameMain.mainrole.gun.init();
+		})
+	}
+	private seq:number = 0 ;//表示主角的移动次序
+
+	shootEnemy():void{
+		//通过定时器来检测是否被击中
+		Laya.timer.frameLoop(1,this,ishit);
+		function ishit():void{
+			if(GameMain.enemy.behit == true){
+				console.log("die");
+				GameMain.enemy.removeSelf();
+				this.moveRole();
+				this.seq++; //进行下一步移动
+				Laya.timer.clear(this,ishit);
+			}else{
+			}
+		}
 	}
 
-	private onDecreaseAlpha1(e:Event):void{
-		this.button1.off(Laya.Event.CLICK,this,this.onDecreaseAlpha1);
-		Laya.timer.once(3000,this,this.onComplete1);
-	}
-
-	private onDecreaseAlpha2(e:Event):void{
-		this.button2.off(Laya.Event.CLICK,this,this.onDecreaseAlpha2);
-		Laya.timer.frameOnce(60,this,this.onComplete2);
-	}
-
-	private onComplete1():void{
-		this.button1.alpha -=0.5;
-	}
-	private onComplete2():void{
-		this.button2.alpha -=0.5;
-	}
 }
 new GameMain();

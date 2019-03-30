@@ -9,50 +9,99 @@ var Tween = Laya.Tween;
 // 程序入口
 var GameMain = /** @class */ (function () {
     function GameMain() {
-        Laya.init(800, 800, WebGL);
+        this.seq = 0; //表示主角的移动次序
+        Laya.init(720, 1280, WebGL);
         Laya.stage.alignV = Stage.ALIGN_MIDDLE;
         Laya.stage.alignH = Stage.ALIGN_CENTER;
         Laya.stage.scaleMode = "showall";
-        Laya.stage.bgColor = "#232628";
-        this.setup();
+        Laya.stage.bgColor = "#feeefe";
+        Laya.loader.load(Consts.resources, Laya.Handler.create(this, this.onLoaded));
     }
-    GameMain.prototype.setup = function () {
-        var vGap = 100;
-        this.button1 = this.createButton("点我3秒以后");
-        this.button1.x = (Laya.stage.width - this.button1.width) / 2;
-        this.button1.y = (Laya.stage.height - this.button1.height - vGap) / 2;
-        Laya.stage.addChild(this.button1);
-        this.button1.on(Laya.Event.CLICK, this, this.onDecreaseAlpha1);
-        this.button2 = this.createButton("点我60帧以后");
-        this.button2.pos(this.button1.x, this.button1.y + vGap);
-        Laya.stage.addChild(this.button2);
-        this.button2.on(Laya.Event.CLICK, this, this.onDecreaseAlpha2);
+    GameMain.prototype.onLoaded = function () {
+        var background = new view.background();
+        Laya.stage.addChild(background);
+        this.createMyself();
+        //根据主角的位置创建敌人
+        this.createEnemy();
     };
-    GameMain.prototype.createButton = function (label) {
-        var w = 300, h = 60;
-        var button = new Sprite();
-        button.graphics.drawRect(0, 0, w, h, "#ff7f50");
-        button.size(w, h);
-        button.graphics.fillText(label, w / 2, 17, "20px simHei", "#ffffff", "center");
-        return button;
+    //根据类型创建敌人
+    GameMain.prototype.createEnemy = function () {
+        GameMain.enemy = new view.enemy();
+        //设置敌人出现的位置，计算相对位置
+        var relativeX = GameMain.mainrole.x;
+        var relativeY = GameMain.mainrole.y;
+        for (var i = 0; i < Consts.lines[this.seq + 1].length; i++) {
+            if (i % 2 === 0) {
+                relativeX += Consts.lines[this.seq + 1][i];
+            }
+            else {
+                relativeY -= Consts.lines[this.seq + 1][i];
+            }
+        }
+        //根据主角的位置，设置敌人初始Y值
+        if (GameMain.mainrole.skewY % 360 === 0) {
+            GameMain.enemy.pos(800, relativeY);
+        }
+        else {
+            GameMain.enemy.pos(-100, relativeY);
+        }
+        //设置敌人缓动出现
+        Laya.Tween.to(GameMain.enemy, { x: relativeX, y: relativeY }, 500, Laya.Ease.linearIn, null, 0);
+        GameMain.enemy.skewY = GameMain.mainrole.skewY;
+        Laya.stage.addChild(GameMain.enemy);
+        //回收敌人，
+        this.shootEnemy();
     };
-    GameMain.prototype.onDecreaseAlpha1 = function (e) {
-        this.button1.off(Laya.Event.CLICK, this, this.onDecreaseAlpha1);
-        Laya.timer.once(3000, this, this.onComplete1);
+    GameMain.prototype.createMyself = function () {
+        GameMain.mainrole = new view.role();
+        //初始位置，状态
+        GameMain.mainrole.pos(600, 1000);
+        GameMain.mainrole.skewY = 180;
+        Laya.stage.addChild(GameMain.mainrole);
+        GameMain.mainrole.gun.init();
     };
-    GameMain.prototype.onDecreaseAlpha2 = function (e) {
-        this.button2.off(Laya.Event.CLICK, this, this.onDecreaseAlpha2);
-        Laya.timer.frameOnce(60, this, this.onComplete2);
+    /**
+     * 根据位置移动角色，需要特定的条件触发
+     */
+    GameMain.prototype.moveRole = function () {
+        var _this = this;
+        var totalTime = 0;
+        var totalX = 0;
+        var totalY = 0;
+        for (var i = 0; i < Consts.lines[this.seq].length; i++) {
+            if (i % 2 === 0) {
+                totalX += Consts.lines[this.seq][i];
+                Laya.Tween.to(GameMain.mainrole, { x: GameMain.mainrole.x - totalX }, Math.abs(Consts.lines[this.seq][i] * 2), Laya.Ease.linearNone, null, totalTime);
+            }
+            else {
+                totalY += Consts.lines[this.seq][i];
+                Laya.Tween.to(GameMain.mainrole, { y: GameMain.mainrole.y - totalY }, Consts.lines[this.seq][i] * 2, Laya.Ease.linearNone, null, totalTime);
+            }
+            totalTime += Math.abs(Consts.lines[this.seq][i] * 2);
+        }
+        Laya.timer.once(totalTime, this, function () {
+            GameMain.mainrole.skewY += 180;
+            //根据主角的位置创建敌人
+            _this.createEnemy();
+            //初始化枪
+            GameMain.mainrole.gun.init();
+        });
     };
-    GameMain.prototype.onComplete1 = function () {
-        this.button1.alpha -= 0.5;
+    GameMain.prototype.shootEnemy = function () {
+        //通过定时器来检测是否被击中
+        Laya.timer.frameLoop(1, this, ishit);
+        function ishit() {
+            if (GameMain.enemy.behit == true) {
+                console.log("die");
+                GameMain.enemy.removeSelf();
+                this.moveRole();
+                this.seq++; //进行下一步移动
+                Laya.timer.clear(this, ishit);
+            }
+            else {
+            }
+        }
     };
-    GameMain.prototype.onComplete2 = function () {
-        this.button2.alpha -= 0.5;
-    };
-    GameMain.resources = [
-        "res/atlas/comp.atlas",
-    ];
     return GameMain;
 }());
 new GameMain();
